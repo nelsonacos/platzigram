@@ -84,9 +84,9 @@ WSGI_APPLICATION = 'platzigram.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'mydatabase',
-        'USER': 'mydatabaseuser',
-        'PASSWORD': 'mypassword',
+        'NAME': 'platzigramdb',
+        'USER': 'platzigram',
+        'PASSWORD': 'tyckyBoom01.',
         'HOST': '127.0.0.1',
         'PORT': '5432',
     }
@@ -129,6 +129,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/2.0/howto/static-files/
 
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 STATIC_URL = '/static/'
 STATICFILES_DIRS = (
     os.path.join(BASE_DIR, 'static'),

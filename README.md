@@ -1,89 +1,38 @@
 # platzigram
 
-Liberar un proyecto de Django a producción es una tarea bastante sencilla pero que puede confundir a muchos la primera vez que se intente (a mi me sucedió). El objetivo de esta lectura es tener una breve a introducción a la arquitectura de un proyecto de Django corriendo en un servidor de producción (un servidor de verdad) y que consecuentemente los siguientes tutoriales de configuración tengan más sentido al momento de que los leas.
+Proyecto desarrollado en el curso de django de [platzi](https://platzi.com/)
 
-Al principio del curso hablamos de un archivo llamado wsgi.py ubicado dentro del folder de las configuraciones del proyecto, conviviendo junto con el archivo urls.py y settings.py. WSGI significa Web Server Gateway Interface y es un protocolo sencillo de llamadas para que un web server (como NGINX o Apache) se comuniquen con una aplicación web o framework escritos en Python.
+**Autor:** Pablo Trinidad
 
-WSGI nos permite delegar el trabajo de aplicar reglas complejas de enrutamiento a un web server como NGINX y al mismo tiempo lograr que exista una comunicación del usuario final de nuestro proyecto de Python. Dicho esto, esta sería la ilustración de un servidor que expone múltiples servicios como e-mail a través de pop3, un app server usando SSL, otro app server redirigiendo las peticiones HTTP a HTTPS y una base de datos de PostgreSQL:
+**Url del curso:** https://platzi.com/cursos/django/
 
-:110 --> email
+## Desplegar en AWS
 
-:80 --> wsgi
+Conectarse al servidor usando la IP pública que AWS nos asigna:
 
-:443 --> wsgi --> django
-
-:5432 --> postgres
-
-Para el caso particular del proyecto del curso, nosotros usaremos un servidor Linux corriendo Ubuntu 16.04 en el cual configuraremos una base de datos de PostgreSQL, un web server NGINX y correremos nuestro proyecto de Django usando Gunicorn. Los archivos estáticos y subidos por los usuarios serán también servidos usando NGINX ya que no es trabajo de Django realizar estas tareas. La base de datos no tiene que estar disponible para el público por lo que no hay necesidad de que NGINX la exponga.
-
--- nginx --
-
-:80 / ---> wsgi --> django <--> postgres
-
-:80 /media --> media_root
-
-:80 /static --> static_root
-
-Django obtiene la estructura, acceso y control de los datos de una aplicación a través de su ORM (Object Relational Mapper), esto significa que no importa qué motor de base de datos esté usando, el mismo código seguirá funcionando, configurar esto en un proyecto de Django es cuestión de segundos.
-
-Todo se define dentro del archivo settings.py de nuestro proyecto dentro de la variable DATABASES:
-
-DATABASE
-
-Será el nodo padre que nos servirá para indicar que definiremos una base de datos.
-Dentro, tendremos el nodo default este tendrá toda la configuración clave de la base de datos.
-
-```python
-DATABASES= {
-    'default':{
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'mydatabase',
-        'USER': 'mydatabaseuser',
-        'PASSWORD': 'mypassword',
-        'HOST': '127.0.0.1',
-        'PORT': '5432',
-    }
-}
-```
-
-Además, Django puede trabajar con múltiples bases de datos usando una estrategia llamada routers por lo que el diccionario DATABASES puede contener múltiples llaves con diferentes bases de datos. Pero eso sí, necesita siempre existir una llave “default”.
-
-Es un diccionario de python el cual requiere definir una base de datos por default, más de eso al final, usando la llave default que a su vez será otro diccionario con los datos de configuración:
-
-La configuración recibirá el engine el cual puede ser:
-
-PostgreSQL: 'django.db.backends.postgresql’
-MySQL: 'django.db.backends.mysql’
-SQLite: 'django.db.backends.sqlite3’
-Oracle: 'Django.db.backends.oracle’
-El nombre de la base de datos “NAME”.
-El usuario “USER”.
-La contraseña “PASSWORD”.
-La ubicación o host del servidor de la base de datos “HOST”.
-Y el puerto de conexión “PORT”.
-
-Adicionalmente, se pueden configurar más detalles por base de datos, por ejemplo, configurar que todos los queries de una vista sean empaquetados en una sola transacción a la base de datos usando ATOMIC_REQUESTS=True
+`sudo ssh -i [clave].pem ubuntu@IP`
 
 ## Configuración inicial del servidor
 
 Es una buena práctica que la primera acción que realicemos al conectarnos a nuestro servidor sea actualizarlo. Lo que podemos hacer con los siguientes comandos:
 
 `sudo apt-get update`
+
 `sudo apt-get upgrade`
 
-Luego crearemos un nuevo usuario que tenga la capacidad de correr algunos comandos de súper usuario pero que no sea súper usuario:
+Para mayor seguridad crearemos un nuevo usuario que tenga la capacidad de correr algunos comandos de súper usuario pero que no sea súper usuario:
 
-`sudo useradd [username] -g sudo -m`
+`sudo useradd [nelson] -g sudo -m`
 
-Le asignamos una contraseña segura al nuevo usuario:
+En mi caso le di el nombre **nelson** tu puedes llamarlo como desees, le asignamos una contraseña segura al nuevo usuario:
 
-`sudo passwd [username]`
+`sudo passwd [mipass]`
 
 Iniciamos sesión con el nuevo usuario:
 
-`su - [username]`
+`su - [nelson]`
 
-Instalar las dependencias necesarias
+Ahora instalaremos las dependencias que deben vivir de manera global en nuestro servidor de produccion:
 
 Dependencias de python:
 
@@ -101,95 +50,199 @@ Nginx:
 
 `sudo apt-get install nginx`
 
-## Configurar PostgreSQL
+Supervisor:
 
-Iniciamos sesión con el usuario postgres:
+`sudo apt-get install supervisor`
 
-`sudo su postgres`
+Vim para modificar archivos:
 
-Entramos al shell interactivo de postgres:
+`sudo apt-get install vim`
 
-`psql`
+## El entorno virtual
 
-Creamos una base de datos:
-
-`CREATE DATABASE platzi;`
-
-Creamos un usuario para la base de datos:
-
-`CREATE USER freddier WITH PASSWORD ‘cvander<3’;`
-
-Le damos permisos al usuario sobre la base de datos:
-
-`GRANT ALL PRIVILEGES ON DATABASE platzi TO freddier;`
-
-Salimos del shell:
-
-`\q`
-
-Salimos de la sesión de postgres:
-
-`exit`
-
-## Configurar el proyecto
-
-Clonar el proyecto de Github:
-
-`git clone https://github.com/pablotrinidad/platzigram.git platzi`
-
-Instalar virtualenv:
+Ya tenemos lo básico instalado para iniciar nuestro despliegue en el servidor, adicional a esto necesitamos instalar un par de cosas como es un entorno virtual y gunicorn. Gunicorn es un servidor de aplicaciones que nos permite conectar por medio de sockets nuestra aplicación Django con Nginx para que pueda ser utilizada. Para nuestro entrono virtual vamos a instalar virtualenv:
 
 `sudo pip3 install virtualenv`
 
-Crear entorno virtual:
+Aqui voy a hacer una pausa para solucionar un problema que me encontrando en varias oportunidades al instalar virtualenv si te produce este error:
 
-`virtualenv -p $(which python3) .venv`
+Para completar los valores perdidos, edite ~ / .bashrc:
 
-Activar entorno virtual:
+`$ vim ~/.bashrc`
 
-`source .venv/bin/activate
+Agregue las siguientes líneas después del comando anterior (suponga que desea que en_US.UTF-8 sea su idioma):
 
-Instalar dependencias para Pillow:
+```bash
+export LANGUAGE="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+```
 
-`sudo apt-get install libjpeg-dev`
+Después de guardar el archivo, haga lo siguiente:
 
-Ir al folder del proyecto:
+`$ source ~/.bashrc`
 
-`cd platzi`
+Ahora ya no estarás enfrentando el mismo problema y podemos Crear un entorno virtual usando Python 3 como versión de entorno virtual:
 
-Instalar dependencias de python del proyecto:
+```bash
+virtualenv -p python3 .venv
+```
 
-`pip install -r requirements/prod.txt`
+le producira una salida como esta:
 
-Agregamos algunas variables de entorno a **~/.bashrc ** para probar localmente que todo esté funcionando:
+```bash
+New python executable in .venv/bin/python
+Installing distribute..............done.
+Installing pip.....................done.
+```
 
-`vi ~/.bashrc`
+Aquí .venv es el nombre del entorno virtual. Cámbielo si para usted es necesario. Para activar este entorno, ejecute:
 
-Las variables lucen algo similar a lo siguiente:
+```bash
+source .venv/bin/activate
+```
 
-[shell] export PLATZI_SECRET_KEY="random_key:aasdafasf"export PLATZI_DB_NAME=“platzi”; export PLATZI_DB_USER=“freddier”; export PLATZI_DB_PASSWORD=“cvander<3” export PLATZI_DB_PORT=“5432” export PLATZI_DB_HOST="localhost"export DJANGO_SETTINGS_MODULE=“platzi.settings.prod”[/shell]
+notara el siguiente cambio en la terminal:
 
-Leemos las variables:
+```bash
+(.venv) $
+```
 
-`source ~/.bashrc`
+vamos traer el codigo nuestro proyecto a nuestro servidor Usando Git:
 
-Editamos la variable **ALLOWED_HOSTS ** del archivo settings de producción:
+`git clone [https://github.com/nelsonacos/platzigram.git]`
 
-`vim platzi/settings/prod.py`
+Instalamos las dependencias que viviran en nuestro entorno virtual:
 
-La variable tendrá algo como lo siguiente, donde gatos.io sea tu dominio o IP:
+`pip install -r requeriments.txt`
 
-`ALLOWED_HOSTS = [’.gatos.io’]`
+deberia tener todas las dependencias instaladas con el comando anterior, sin embargo vale la pena tomar en cuenta que en algunas ocasiones puedes haber usado una base de datos en desarrollo como sqlite y en produccion probrablemente quiera usar postgres, debe asegurarse de instalar psycopg2 en su entorno virtual:
 
-## Sanity Check
+`pip install psycopg2`
+
+Otra cosa que debe considerar para produccion que probablemente no uso en desarrollo es gunicorn:
+
+`pip install gunicorn`
+
+## Configurar PostgreSQL
+
+Crear un usuario sin permisos de superusuario sin capacidad de crear bases de datos. Sólo debe asignarle una base de datos y otorgarle todos los permisos necesarios sobre esa base de datos, para ello debe hacerlo con el usuario que postgres crea por defecto:
+
+`sudo su - postgres`
+
+luego de iniciar session en la terminal con el usuario postgres ejecute el siguiente comando para crear un usuario de postgres de forma interactiva.
+
+```bash
+createuser --interactive -P
+```
+
+le producira una salida como esta:
+
+```bash
+Enter name of role to add: db_user
+Enter password for new role:
+Enter it again:
+Shall the new role be a superuser? (y/n) n
+Shall the new role be allowed to create databases? (y/n) n
+Shall the new role be allowed to create more new roles? (y/n) n
+postgres@nelson:~$
+```
+
+como puede ver le pide primero el nombre de usuario, luego la contraseña, confirmar la contraseña, luego pregunta si desea que este usuario sea superusuario, debe contestar **n** por medidas de seguridad asi como tambien en todas las siguientes, la otra pregunta es si queremos que este usuario pueda crear bases de datos, y la ultima pregunta es si queremos que este usuario pueda crear nuevos usuarios. Recuerde por medidas de seguridad debe contestar **n**
+
+A continuación, modifique algunos de los parámetros de conexión para el usuario que acaba de crear. Esto acelerará las operaciones de base de datos de modo que los valores correctos no tengan que ser consultados y configurados cada vez que se establezca una conexión.
+
+Debe establecer la codificación por defecto a UTF-8, que es la que Django espera. También debe que establecer el régimen de aislamiento de las transacciones de “read committed”, el cual bloquea la lectura de transacciones no confirmadas. Por último,debera establecer la zona horaria.
+
+Ejecute postgres con el siguiente comando:
+
+`psql`
+
+De forma predeterminada, se establecerán los proyectos de Django para usar UTC. Éstas son todas las recomendaciones del propio proyecto de Django. Ejecute los siguientes comandos:
+
+`ALTER ROLE [db_user] SET client_encoding TO ‘utf8’;`
+
+`ALTER ROLE [db_user] SET default_transaction_isolation TO ‘read committed’;`
+
+`ALTER ROLE [db_user] SET timezone TO ‘UTC’;`
+
+Para salir de postgres ejecute:
+
+`\q`
+
+Debe otorgar a este usuario todos los permisos sobre la base de datos que usara en la aplicacion:
+
+`createdb --owner [db_user] [platzigram_db]`
+
+En el ejemplo anterior, el nombre de usuario de la base de datos es db_user y la base de datos platzigram_db. Recuerde proporcionar un nombre apropiado a la base de datos, según su aplicación Django.
+
+Cierre la sesión del usuario postgres.
+
+`logout`
+
+## Configurar la base de datos en django
+
+`vim platzigram/platzigram/settings.py`
+
+Dentro, tendra el nodo default este tendrá toda la configuración clave de la base de datos.
+
+```python
+DATABASES= {
+    'default':{
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'platzigram_db',
+        'USER': 'db_user',
+        'PASSWORD': 'mypassword',
+        'HOST': '127.0.0.1',
+        'PORT': '5432',
+    }
+}
+```
+
+Django puede trabajar con múltiples bases de datos usando una estrategia llamada routers por lo que el diccionario DATABASES puede contener múltiples llaves con diferentes bases de datos. Pero necesita siempre existir una llave “default”.
+
+Para esta guia se usa postgres pero usted puede asignar otras opciones. La configuración que recibirá **ENGINE**s puede ser:
+
+PostgreSQL: 'django.db.backends.postgresql’
+MySQL: 'django.db.backends.mysql’
+SQLite: 'django.db.backends.sqlite3’
+Oracle: 'Django.db.backends.oracle’
+El nombre de la base de datos “NAME”.
+El usuario “USER”.
+La contraseña “PASSWORD”.
+La ubicación o host del servidor de la base de datos “HOST”.
+Y el puerto de conexión “PORT”.
+
+Adicionalmente, se pueden configurar más detalles por base de datos, por ejemplo, configurar que todos los queries de una vista sean empaquetados en una sola transacción a la base de datos usando ATOMIC_REQUESTS=True
+
+otra variable que debemos editar del archivo settings de producción es **ALLOWED_HOSTS**. La variable tendrá algo como lo siguiente, donde www.nelsonacosta.cl sea tu dominio o IP:
+
+`ALLOWED_HOSTS = [’www.nelsonacosta.cl’]`
+
+cambiamos la configuración de DEPURACIÓN a False :
+
+`DEBUG = False`
+
+## Probar nuestro servidor
 
 Hasta este punto el proyecto debe ser capaz de escribir a la base de datos y servirse usando el servidor de desarrollo y gunicorn. Probémoslo.
 
-Reflejar el modelo de Django en PostgreSQL:
+Activar entorno virtual:
+
+`source .venv/bin/activate`
+
+nos movemos hasta la carpeta del proyecto django:
+
+`cd platzigram`
+
+Ahora para asegurar que nuestros archivos estaticos se muestren correctamente ejecutamos el siguiente comando:
+
+`./manage.py collectstatic`
+
+Refleje el modelo de Django en PostgreSQL:
 
 `./manage.py migrate`
 
-Crear un super usuario:
+Cree un super usuario para la app:
 
 `./manage.py createsuperuser`
 
@@ -197,115 +250,304 @@ Correr servidor de desarrollo:
 
 `./manage.py runserver 0.0.0.0:8000`
 
+Salga del servidor con CONTROL-C.
+
 Correr gunicorn:
 
-`gunicorn platzi.wsgi -b 0.0.0.0:8000`
+`(.venv) $ gunicorn platzigram.wsgi:application --bind 0.0.0.0:8001`
 
-Si todo funcionó correctamente, los pasos 3 y 4 debieron mostrar tu sitio en la URL o IP en el puerto 8000.
+Ahora, puede acceder a gunicorn desde la IP pública de su servidor con el puerto 8001. Para hacer que Gunicorn sea más útil para la aplicación django, debe configurarlo.
 
-## Configurar Nginx
-
-Iniciar sesión como super usuario:
-
-`sudo su -`
-
-Ir al directorio de Nginx:
-
-`cd /etc/nginx/`
-
-Borrar los antiguos archivos de configuración:
-
-`rm sites-\*/default`
-
-Crear un nuevo archivo:
-
-E [shell]vim sites-available/app[/shell] Con el siguiente contenido:
-
-[shell] upstream django_app { server 127.0.0.1:8000; }server {listen 80; server_name <server_name></server_name>;access_log /var/log/nginx/app.log; error_log /var/log/nginx/app.error.log;location /static { autoindex on; alias /home/platzi/platzi/staticfiles/; } location /media { autoindex on; alias /home/platzi/platzi/media/; } location / { proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header Host $http_host; proxy_redirect off; proxy_pass http://django_app; } } [/shell]
-
-Linkear los archivos:
-
-[shell]ln -s /etc/nginx/sites-available/app /etc/nginx/sites-enabled/[/shell]
-
-Reiniciar Nginx:
-
-[shell]service nginx restart[/shell]
+Salga del servidor con CONTROL-C.
 
 ## Configurar Gunicorn
 
-Regresamos a la sesión de Platzi:
+Creamos un script bash llamado gunicorn_start.bash. Puede cambiar el nombre del archivo según su elección.
 
-[shell]exit[/shell]
+Nos movemos a la ruta del usuario:
 
-Creamos folder para los scripts y los logs:
+`cd ..`
 
-[shell]mkdir deploy logs[/shell]
+Ahora es el momento de configurar gunicorn para que pueda trabajar en conjunto con supervisor. Si el sistema se reinicia o la aplicación se cierra inesperadamente, supervisor se encargará de su reinicio. creamos el script:
 
-Creamos un script dentro de deploy:
+`vim gunicorn_start.bash`
 
-[shell]vim deploy/gunicorn_start[/shell] Con un contenido similar al siguiente:
+ahora agregue las siguientes configuraciones en el archivo
 
-[shell] #!/bin/bashNAME=“platzi” VIRTUALENV="/home/platzi/.venv/" DJANGODIR="/home/platzi/platzi/" USER=platzi GROUP=sudo NUM_WORKERS=3 DJANGO_WSGI_MODULE=platzi.wsgiecho "Starting $NAME as whoami"cd $VIRTUALENV source bin/activate cd $DJANGODIRexport PLATZI_SECRET_KEY=“random_key:aasdafasf” export PLATZI_DB_NAME=“platzi” export PLATZI_DB_USER=“freddier” export PLATZI_DB_PASSWORD=“cvander<3” export PLATZI_DB_PORT=“5432” export PLATZI_DB_HOST=“localhost” export DJANGO_SETTINGS_MODULE=“platzi.settings.prod” export PYTHONPATH=$DJANGODIR:$PYTHONPATH exec gunicorn ${DJANGO_WSGI_MODULE} \ --workers $NUM_WORKERS \ --user=$USER --group=$GROUP \ --log-level=debug \ --bind=127.0.0.1:8000 [/shell]
+```bash
+#!/bin/bash
 
-Hacer el script ejecutable:
+NAME="platzigram"                                   # Name of the application
+DJANGODIR=/home/nelson/platzigram                   # Django project directory
+SOCKFILE=/home/nelson/.venv/run/gunicorn.sock       # we will communicte using this unix socket
+USER=nelson                                         # the user to run as
+GROUP=sudo                                          # the group to run as
+NUM_WORKERS=3                                       # how many worker processes should Gunicorn spawn
+DJANGO_SETTINGS_MODULE=platzigram.settings      # which settings file should Django use
+DJANGO_WSGI_MODULE=platzigram.wsgi              # WSGI module name
+echo "Starting $NAME as `whoami`"
 
-[shell]chmod +x deploy/gunicorn_start[/shell]
+# Activate the virtual environment
 
-Probar el script:
+cd $DJANGODIR
+source /home/nelson/.venv/bin/activate
+export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
+export PYTHONPATH=$DJANGODIR:$PYTHONPATH
 
-[shell]deploy/gunicorn_start[/shell]
+# Create the run directory if it doesn't exist
 
-Mientras el script esté corriendo, el proyecto estará viviendo en la IP en el puerto 80.
+RUNDIR=$(dirname $SOCKFILE)
+test -d $RUNDIR || mkdir -p $RUNDIR
 
-## Crear un servicio
+# Start your Django Unicorn
+# Programs meant to be run under supervisor should not daemonize themselves (do not use --daemon)
 
-Iniciar sesión como super usuario:
+exec gunicorn ${DJANGO_WSGI_MODULE}:application \
+  --name $NAME \
+  --workers $NUM_WORKERS \
+  --user=$USER --group=$GROUP \
+  --bind=unix:$SOCKFILE \
+  --log-level=debug \
+  --log-file=-
+```
 
-[shell]sudo su -[/shell]
+Todas las variables están bien explicadas (comentadas). Cambie el valor de las variables de acuerdo con su configuración. La variable NAME , definirá cómo se identificará su aplicación en programas como ps , top , etc. La forma recomendada de definir el numero de workers es igual a 2 \* CPUs + 1. Por ejemplo, para una sola máquina de CPU debe configurarse con 3 workers.
 
-Ir al directorio de los servicios:
+Este script nos permite levantar nuestra aplicación django sin usar `./manage runserver`
 
-[shell]cd /etc/init[/shell]
+Asigne permisos de ejecucion al script:
 
-Crear el servicio:
+`sudo chmod u+x gunicorn_start.bash`
 
-[shell]vim platzi.conf[/shell] Con el siguiente contenido:
+Pruebe este script ejecutándo:
 
-[shell] # platzi# description “Platzi Linux Service” # authon "Pablo Trinidad"start on startupscript exec /home/platzi/deploy/gunicorn_start end script[/shell]
+```bash
+./gunicorn_start.bash
+```
 
-Iniciar servicio:
+Le producira un salida como esta:
 
-[shell]service platzi start[/shell]
+```bash
+Starting hello_app as hello
+2013-06-09 14:21:45 [10724] [INFO] Starting gunicorn 18.0
+2013-06-09 14:21:45 [10724] [DEBUG] Arbiter booted
+2013-06-09 14:21:45 [10724] [INFO] Listening at: unix:/webapps/hello_django/run/gunicorn.sock (10724)
+2013-06-09 14:21:45 [10724] [INFO] Using worker: sync
+2013-06-09 14:21:45 [10735] [INFO] Booting worker with pid: 10735
+2013-06-09 14:21:45 [10736] [INFO] Booting worker with pid: 10736
+2013-06-09 14:21:45 [10737] [INFO] Booting worker with pid: 10737
+```
 
-Por último tenemos que regresar al folder de la carpeta que contiene el proyecto y ejecutar:
+Ahora es el momento de configurar supervisor para que pueda supervisar nuestra aplicación. Si el sistema se reinicia o la aplicación se cierra inesperadamente, el supervisor se encargará de su reinicio.
 
-[shell]./manage.py collectstatic[/shell]
+salga del proceso con **CONTROL-C**
 
-## El servidor
+## Configurando Supervisor
 
-Para la demostración de la clase se usa una máquina t2.nanoque Amazon Web Services provee con Ubuntu Server. Toda la configuración del proyecto vive en el mismo servidor. Es decir, tanto la base de datos como los archivos estáticos y el código fuente son manejados por una sola máquina. Es importante mencionar que en casos donde nuestro proyecto es más grande y requiere de una mejor arquitectura, es recomendable separar cada uno de estos de manera que la base de datos tenga su propio servidor, que exista un balanceo de carga hacia las instancias que manejan el código y que la media y los estáticos sean servidos desde una CDN. El caso de instalación que veremos en este post es un método que se puede usar en cualquier servidor Linux con Ubuntu Server; por lo que no es una configuración que únicamente se pueda llevar a cabo usando AWS. Cualquier proveedor que te dé acceso a una máquina Linux es útil.
+Para supervisar cualquier programa a través de supervisor, se debe crear un archivo de configuración para ese programa dentro del directorio /etc/supervisor/conf.d/ Para nuestra aplicación Django que es platzigram, crearemos platzigram.conf
 
-## Crear el servidor
+`sudo vim /etc/supervisor/conf.d/platzigram.conf`
 
-Una vez dentro de la consola de administración de Amazon Web Services sigue estos pasos:
+Ahora, escriba el siguiente contenido en el archivo abierto.
 
-- Accede a la sección de Amazon EC2
-- Da clic en el botón Launch Instance
-- Selecciona Ubuntu 16.04 como el Sistema Operativo deseado
-- Elige el tipo de instancia que más se adecúe a tus necesidades (t2.micro es parte de la capa gratuita)
-- En el paso 3, deja todas las configuraciones tal y como están
-- Selecciona la cantidad de GB de almacenamiento que quieras tener en tu instancia
-- Asigna un nombre descriptivo a la instancia
-- Crea un nuevo grupo de seguridad con el puerto 22, 80 y 8000 abiertos desde cualquier IP por el protocolo TCP
-- Selecciona Launch
-- Crea nuevas llaves SSH y descargarlas al ordenador
-- Conectarse al servidor
-- Para conectarnos al servidor usaremos la llave que acabamos de descargar. Es muy importante nunca perder esta llave ya que si la perdemos no tendremos otra forma de acceder al servidor.
+```bash
+[program:platzigram]
+command = /home/nelson/gunicorn_start.bash                   ; Command to start app
+user = nelson                                                ; User to run as
+stdout_logfile = /home/nelson/logs/gunicorn_supervisor.log   ; Where to write log messages
+redirect_stderr = true                                       ; Save stderr in the same log
+environment=LANG=en_US.UTF-8,LC_ALL=en_US.UTF-8              ; Set UTF-8 as default encoding
+```
 
-Poner la llave en modo lectura:
+Cambie el valor de configuración anterior según su configuración. Como mencionamos en el archivo anterior que los registros se almacenarán en /home/nelson/logs/gunicorn_supervisor.log , necesitamos crear este directorio y el archivo.
 
-[shell]chmod 0400 Platzi.pem[/shell]
+`mkdir -p /home/nelson/logs/`
 
-Conectarse al servidor usando la IP pública que AWS nos asigna:
+`touch /home/nelson/logs/gunicorn_supervisor.log`
 
-[shell]sudo ssh -i Platzi.pem ubuntu@IP[/shell]
+Una vez hecho esto, le pediremos al supervisor que vuelva a leer los archivos de configuración y los actualice para que nuestro nuevo archivo de configuración obtenga add.
+
+### Para Ubuntu 14.04:
+
+`sudo supervisorctl reread`
+
+Le producira una salida como esta:
+
+`platzigram: available`
+
+Ejecute:
+
+`sudo supervisorctl update`
+
+Le producira una salida como esta:
+
+`platzigram: added process group`
+
+Como puede ver, el archivo de configuración de platzigram se agrega al grupo de procesos de supervisor. Ahora, inicia nuestra aplicación a través de él. Para esto:
+
+`sudo supervisorctl start platzigram`
+
+Le producira una salida como esta:
+
+`platzigram: started`
+
+### Para Ubuntu 16.04:
+
+`sudo systemctl restart supervisor`
+
+`sudo systemctl enable supervisor`
+
+Para verificar el estado:
+
+```bash
+$ sudo supervisorctl status platzigram
+platzigram                       RUNNING   pid 23267, uptime 0:00:26
+```
+
+Para detener:
+
+```bash
+$ sudo supervisorctl stop platzigram
+platzigram: stopped
+```
+
+Para reiniciar:
+
+```bash
+$ sudo supervisorctl restart platzigram
+platzigram: stopped
+platzigram: started
+```
+
+Ahora, la aplicación se reiniciará automáticamente después de que el sistema se inicie o la aplicación se cuelgue.
+
+Por último debe configurar Nginx. Actuará como servidor para la aplicación.
+
+## Configurar Nginx
+
+Configurar el servidor web para que se conecte con el socket que tenemos corriendo gracias a gunicorn y muestre nuestro sitio web.
+
+Nginx es realmente sencillo de configurar, nginx cuenta con dos carpetas una donde se almacenan las configuraciones de los sitios disponibles y otra donde se almacenan los sitios activos, vamos a crear nuestra configuración en la carpeta /etc/nginx/sites-available creamos nuestro archivo igual a como creamos el archivo de configuración para supervisor
+
+`$ sudo vim /etc/nginx/sites-available/platzigram.conf`
+
+Ahora, coloca el siguiente contenido en el archivo abierto.
+
+```bash
+upstream platzigram_server {
+  # fail_timeout=0 means we always retry an upstream even if it failed
+  # to return a good HTTP response (in case the Unicorn master nukes a
+  # single worker for timing out).
+  server unix:/home/nelson/.venv/run/gunicorn.sock fail_timeout=0;
+}
+
+server {
+
+    listen   80;
+    server_name <your domain name>;
+
+    client_max_body_size 4G;
+    access_log /home/nelson/logs/nginx-access.log;
+    error_log /home/nelson/logs/nginx-error.log;
+
+    location /static/ {
+        alias   /home/nelson/platzigram/static/;
+    }
+
+    location /media/ {
+        alias   /home/nelson/platzigram/media/;
+    }
+
+    location / {
+
+        # an HTTP header important enough to have its own Wikipedia entry:
+        #   http://en.wikipedia.org/wiki/X-Forwarded-For
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+
+        # enable this if and only if you use HTTPS, this helps Rack
+        # set the proper protocol for doing redirects:
+        # proxy_set_header X-Forwarded-Proto https;
+
+        # pass the Host: header from the client right along so redirects
+        # can be set properly within the Rack application
+        proxy_set_header Host $http_host;
+
+        # we don't want nginx trying to do something clever with
+        # redirects, we set the Host: header above already.
+        proxy_redirect off;
+
+        # set "proxy_buffering off" *only* for Rainbows! when doing
+        # Comet/long-poll stuff.  It's also safe to set if you're
+        # using only serving fast clients with Unicorn + nginx.
+        # Otherwise you _want_ nginx to buffer responses to slow
+        # clients, really.
+        # proxy_buffering off;
+
+        # Try to serve static files from nginx, no point in making an
+        # *application* server like Unicorn/Rainbows! serve static files.
+        if (!-f $request_filename) {
+            proxy_pass http://platzigram_server;
+            break;
+        }
+    }
+
+    # Error pages
+    error_page 500 502 503 504 /500.html;
+    location = /500.html {
+        root /home/nelson/platzigram/static/;
+    }
+}
+```
+
+Una vez hecho esto debe dar de alta la configuración del sitio, para esto ejecute:
+
+`sudo ln -s /etc/nginx/sites-available/platzigram.conf /etc/nginx/sites-enabled/platzigram.conf`
+
+Prueba tu configuración de Nginx para buscar errores de sintaxis con el comando:
+
+`sudo nginx -t`
+
+Si todo va bien solo falta reiniciar nginx pero antes debe eliminar la configuracion anterior. Para ello nos movemos hasta:
+
+`cd /etc/nginx/sites-available/`
+
+veamos que hay:
+
+`ls`
+
+Eliminamos la configuracion por defecto:
+
+`sudo rm default`
+
+y finalente vamos a reiniciar nginx:
+
+`sudo service nginx restart`
+
+Enhorabuena, tu aplicación django lista para producción está configurada. visita desde tu navegador la ip de tu servidor o el wwww.nelsonacosta.cl
+
+## Seguridad en nuestra app
+
+¡Bien hecho! ¡Ya deberías tener una aplicación Django desplegada! Ahora es el momento de asegurar la aplicación para asegurarse de que es muy difícil hackearla. Para hacer eso, utilizaremos el ufwfirewall de Linux incorporado.
+
+ufw funciona configurando reglas. Las reglas le dicen al firewall qué tipo de tráfico debe aceptar o rechazar. En este punto, hay dos tipos de tráfico que queremos aceptar, o en otras palabras, dos puertos que queremos abrir, vale recordar que este paso no es necesario si estas utilizando AWS ya que permite crear estas reglas de seguridad desde la interface grafica pero como esta guia sirve para cualquier maquina con linux le muestro como hacerlo desde la linea de comandos:
+
+puerto 80 para escuchar el tráfico entrante a través de navegadores
+
+puerto 22 para poder conectarse al servidor a través de SSH.
+
+Abra el puerto escribiendo:
+
+`$ ufw allow 80`
+
+`$ ufw allow 22`
+
+luego habilite ufw escribiendo:
+
+`$ ufw enable`
+
+**Consejo:** antes de cerrar la terminal, asegúrese de que puede conectarse a través de SSH desde otra terminal para que no esté bloqueado fuera de su droplet debido a las malas configuraciones del firewall.
+
+## ¿Qué hacer después?
+
+Esta publicación es la mejor guía para implementar una aplicación de Django en un único servidor. En caso de que esté desarrollando una aplicación que debería servir para grandes cantidades de tráfico, le sugiero que busque en una arquitectura de servidor altamente escalable.
